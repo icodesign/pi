@@ -4,7 +4,8 @@
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"paths": {
-			"@earendil-works/pi-protocol": ["../protocol/dist/index.d.ts"]
+			"@earendil-works/pi-protocol": ["../protocol/dist/index.d.ts"],
+			"@earendil-works/pi-protocol/orbis": ["../protocol/dist/orbis.d.ts"]
 		}
 	},
 	"include": ["src/**/*.ts"],

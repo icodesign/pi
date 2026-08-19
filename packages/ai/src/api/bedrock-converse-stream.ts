@@ -1,4 +1,3 @@
-import type { Agent as HttpsAgent } from "node:https";
 import {
 	BedrockRuntimeClient,
 	type BedrockRuntimeClientConfig,
@@ -22,10 +21,7 @@ import {
 	type ToolResultContentBlock,
 	ToolResultStatus,
 } from "@aws-sdk/client-bedrock-runtime";
-import { NodeHttpHandler } from "@smithy/node-http-handler";
 import type { BuildMiddleware, DocumentType, MetadataBearer } from "@smithy/types";
-import { HttpProxyAgent } from "http-proxy-agent";
-import { HttpsProxyAgent } from "https-proxy-agent";
 import { calculateCost } from "../models.ts";
 import type {
 	Api,
@@ -52,9 +48,9 @@ import { normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
-import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
+import { applyBedrockTransportOverrides } from "./bedrock-transport.ts";
 import { getJsonSchemaToolParameters, resolveJsonSchemaStrictSampling } from "./constrained-sampling.ts";
 import {
 	adjustMaxTokensForThinking,
@@ -166,54 +162,40 @@ export const stream: StreamFunction<"bedrock-converse-stream", BedrockOptions> =
 			undefined;
 		const useBearerToken = bearerToken !== undefined && !skipAuth;
 
-		// in Node.js/Bun environment only
-		if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
-			// Region resolution: ARN-embedded > explicit option > env vars > SDK default chain.
-			// When the model ID is an inference profile ARN, extract the region from it.
-			// This avoids conflicts with AWS_REGION set for other services.
-			const arnRegionMatch = model.id.match(/^arn:aws(?:-[a-z0-9-]+)?:bedrock:([a-z0-9-]+):/);
-			if (arnRegionMatch) {
-				config.region = arnRegionMatch[1];
-			} else if (configuredRegion) {
-				config.region = configuredRegion;
-			} else if (endpointRegion && useExplicitEndpoint) {
-				config.region = endpointRegion;
-			} else if (!hasAmbientConfiguredProfile) {
-				config.region = "us-east-1";
-			}
-
-			// Support proxies that don't need authentication
-			if (skipAuth) {
-				config.credentials = {
-					accessKeyId: "dummy-access-key",
-					secretAccessKey: "dummy-secret-key",
-				};
-			}
-
-			const credentials = getConfiguredBedrockCredentials(options.env);
-			if (!skipAuth && credentials && !optionsProfile) {
-				config.credentials = credentials;
-			}
-
-			const proxyUrl = resolveHttpProxyUrlForTarget(model.baseUrl, options.env);
-			if (proxyUrl) {
-				// Bedrock runtime uses NodeHttp2Handler by default since v3.798.0, which is based
-				// on `http2` module and has no support for http agent.
-				// Use NodeHttpHandler to support HTTP(S) proxy agents.
-				config.requestHandler = new NodeHttpHandler({
-					httpAgent: new HttpProxyAgent(proxyUrl),
-					httpsAgent: new HttpsProxyAgent(proxyUrl) as unknown as HttpsAgent,
-				});
-			} else if (getProviderEnvValue("AWS_BEDROCK_FORCE_HTTP1", options.env) === "1") {
-				// Some custom endpoints require HTTP/1.1 instead of HTTP/2
-				config.requestHandler = new NodeHttpHandler();
-			}
-		} else {
-			// Non-Node environment (browser): fall back to us-east-1 since
-			// there's no config file resolution available.
-			config.region =
-				configuredRegion || (endpointRegion && useExplicitEndpoint ? endpointRegion : undefined) || "us-east-1";
+		// Region resolution: ARN-embedded > explicit option > env vars > SDK default chain.
+		// When the model ID is an inference profile ARN, extract the region from it.
+		// This avoids conflicts with AWS_REGION set for other services.
+		const arnRegionMatch = model.id.match(/^arn:aws(?:-[a-z0-9-]+)?:bedrock:([a-z0-9-]+):/);
+		if (arnRegionMatch) {
+			config.region = arnRegionMatch[1];
+		} else if (configuredRegion) {
+			config.region = configuredRegion;
+		} else if (endpointRegion && useExplicitEndpoint) {
+			config.region = endpointRegion;
+		} else if (!hasAmbientConfiguredProfile) {
+			// Leaving the region unset defers to the SDK's shared config chain, which only exists
+			// on Node. Off Node, `getProviderEnvValue` cannot see an ambient AWS_PROFILE, so this
+			// default always applies there and `runtimeConfig.browser` never has to reject the
+			// request with "Region is missing".
+			config.region = "us-east-1";
 		}
+
+		// Support proxies that don't need authentication
+		if (skipAuth) {
+			config.credentials = {
+				accessKeyId: "dummy-access-key",
+				secretAccessKey: "dummy-secret-key",
+			};
+		}
+
+		// Browser and React Native have no credential chain of their own, so these scoped
+		// values are the only static credentials they can pick up.
+		const credentials = getConfiguredBedrockCredentials(options.env);
+		if (!skipAuth && credentials && !optionsProfile) {
+			config.credentials = credentials;
+		}
+
+		applyBedrockTransportOverrides(config, model.baseUrl, options.env);
 
 		if (useBearerToken) {
 			config.token = { token: bearerToken };

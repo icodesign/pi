@@ -12,7 +12,7 @@ import type {
 	Tool,
 	ToolResultMessage,
 	Usage,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/orbis";
 import type { Static, TSchema } from "typebox";
 
 /**

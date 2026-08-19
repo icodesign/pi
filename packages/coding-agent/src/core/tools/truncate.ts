@@ -44,6 +44,13 @@ export interface TruncationOptions {
 	maxBytes?: number;
 }
 
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder();
+
+function byteLength(value: string): number {
+	return utf8Encoder.encode(value).byteLength;
+}
+
 function splitLinesForCounting(content: string): string[] {
 	if (content.length === 0) {
 		return [];
@@ -79,7 +86,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 
-	const totalBytes = Buffer.byteLength(content, "utf-8");
+	const totalBytes = byteLength(content);
 	const lines = splitLinesForCounting(content);
 	const totalLines = lines.length;
 
@@ -101,7 +108,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 	}
 
 	// Check if first line alone exceeds byte limit
-	const firstLineBytes = Buffer.byteLength(lines[0], "utf-8");
+	const firstLineBytes = byteLength(lines[0]);
 	if (firstLineBytes > maxBytes) {
 		return {
 			content: "",
@@ -125,7 +132,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 
 	for (let i = 0; i < lines.length && i < maxLines; i++) {
 		const line = lines[i];
-		const lineBytes = Buffer.byteLength(line, "utf-8") + (i > 0 ? 1 : 0); // +1 for newline
+		const lineBytes = byteLength(line) + (i > 0 ? 1 : 0); // +1 for newline
 
 		if (outputBytesCount + lineBytes > maxBytes) {
 			truncatedBy = "bytes";
@@ -142,7 +149,7 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 	}
 
 	const outputContent = outputLinesArr.join("\n");
-	const finalOutputBytes = Buffer.byteLength(outputContent, "utf-8");
+	const finalOutputBytes = byteLength(outputContent);
 
 	return {
 		content: outputContent,
@@ -169,7 +176,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 	const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 
-	const totalBytes = Buffer.byteLength(content, "utf-8");
+	const totalBytes = byteLength(content);
 	const lines = splitLinesForCounting(content);
 	const totalLines = lines.length;
 
@@ -198,7 +205,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 
 	for (let i = lines.length - 1; i >= 0 && outputLinesArr.length < maxLines; i--) {
 		const line = lines[i];
-		const lineBytes = Buffer.byteLength(line, "utf-8") + (outputLinesArr.length > 0 ? 1 : 0); // +1 for newline
+		const lineBytes = byteLength(line) + (outputLinesArr.length > 0 ? 1 : 0); // +1 for newline
 
 		if (outputBytesCount + lineBytes > maxBytes) {
 			truncatedBy = "bytes";
@@ -207,7 +214,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 			if (outputLinesArr.length === 0) {
 				const truncatedLine = truncateStringToBytesFromEnd(line, maxBytes);
 				outputLinesArr.unshift(truncatedLine);
-				outputBytesCount = Buffer.byteLength(truncatedLine, "utf-8");
+				outputBytesCount = byteLength(truncatedLine);
 				lastLinePartial = true;
 			}
 			break;
@@ -223,7 +230,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 	}
 
 	const outputContent = outputLinesArr.join("\n");
-	const finalOutputBytes = Buffer.byteLength(outputContent, "utf-8");
+	const finalOutputBytes = byteLength(outputContent);
 
 	return {
 		content: outputContent,
@@ -245,20 +252,20 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
  * Handles multi-byte UTF-8 characters correctly.
  */
 function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
-	const buf = Buffer.from(str, "utf-8");
-	if (buf.length <= maxBytes) {
+	const bytes = utf8Encoder.encode(str);
+	if (bytes.length <= maxBytes) {
 		return str;
 	}
 
 	// Start from the end, skip maxBytes back
-	let start = buf.length - maxBytes;
+	let start = bytes.length - maxBytes;
 
 	// Find a valid UTF-8 boundary (start of a character)
-	while (start < buf.length && (buf[start] & 0xc0) === 0x80) {
+	while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) {
 		start++;
 	}
 
-	return buf.slice(start).toString("utf-8");
+	return utf8Decoder.decode(bytes.slice(start));
 }
 
 /**

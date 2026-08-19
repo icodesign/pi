@@ -1,8 +1,12 @@
 import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as nodeResolvePath, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath as fileURLToPathExport } from "node:url";
 import { spawnProcessSync } from "./child-process.ts";
+
+// Orbis intentionally exposes resolver module exports as `unknown` until a
+// caller supplies the shape needed at its capability boundary.
+const fileURLToPath = fileURLToPathExport as unknown as (value: string | URL) => string;
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 

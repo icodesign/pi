@@ -1,0 +1,8 @@
+{
+	"extends": "./tsconfig.build.json",
+	"compilerOptions": {
+		"typeRoots": ["../../types"],
+		"types": ["orbis-quickjs-runtime-types"]
+	},
+	"include": ["src/orbis.ts"]
+}

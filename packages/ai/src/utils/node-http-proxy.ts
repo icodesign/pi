@@ -89,7 +89,7 @@ function getProxyForUrl(targetUrl: string | URL, env?: ProviderEnv): string {
 export const UNSUPPORTED_PROXY_PROTOCOL_MESSAGE =
 	"Unsupported proxy protocol. SOCKS and PAC proxy URLs are not supported; use an HTTP or HTTPS proxy URL.";
 
-export function resolveHttpProxyUrlForTarget(targetUrl: string | URL, env?: ProviderEnv): URL | undefined {
+export function resolveHttpProxyUrlForTarget(targetUrl: string | URL, env?: ProviderEnv): string | undefined {
 	const proxy = getProxyForUrl(targetUrl, env);
 	if (!proxy) {
 		return undefined;
@@ -108,5 +108,5 @@ export function resolveHttpProxyUrlForTarget(targetUrl: string | URL, env?: Prov
 		throw new Error(`${UNSUPPORTED_PROXY_PROTOCOL_MESSAGE} Got ${proxyUrl.protocol}`);
 	}
 
-	return proxyUrl;
+	return proxyUrl.toString();
 }

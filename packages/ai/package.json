@@ -5,6 +5,14 @@
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"browser": {
+		"./src/api/bedrock-transport.ts": "./src/api/bedrock-transport.browser.ts",
+		"./dist/api/bedrock-transport.js": "./dist/api/bedrock-transport.browser.js"
+	},
+	"react-native": {
+		"./src/api/bedrock-transport.ts": "./src/api/bedrock-transport.browser.ts",
+		"./dist/api/bedrock-transport.js": "./dist/api/bedrock-transport.browser.js"
+	},
 	"sideEffects": [
 		"./dist/compat.js",
 		"./dist/images.js",
@@ -18,6 +26,10 @@
 		"./compat": {
 			"types": "./dist/compat.d.ts",
 			"import": "./dist/compat.js"
+		},
+		"./orbis": {
+			"types": "./dist/orbis.d.ts",
+			"import": "./dist/orbis.js"
 		},
 		"./providers/*": {
 			"types": "./dist/providers/*.d.ts",
@@ -54,8 +66,9 @@
 		"generate-model-catalog": "node scripts/generate-models.ts --strict --json-only --json-output ../../.artifacts/model-catalog",
 		"generate-image-models": "node scripts/generate-image-models.ts --strict",
 		"check:model-data": "node scripts/check-model-data.ts",
-		"build": "npm run generate-models && npm run build:offline",
+		"build": "npm run generate-models && npm run build:offline && npm run build:orbis",
 		"build:offline": "npm run check:model-data && tsgo -p tsconfig.build.json && shx rm -rf dist/providers/data && shx cp -r src/providers/data dist/providers/data",
+		"build:orbis": "tsgo -p tsconfig.orbis.json",
 		"test": "vitest --run",
 		"prepublishOnly": "npm run clean && npm run build"
 	},

@@ -5,7 +5,7 @@ import type {
 	ServerEvent,
 	SessionSnapshot,
 	ThinkingLevel,
-} from "@earendil-works/pi-protocol";
+} from "@earendil-works/pi-protocol/orbis";
 import type { Unsubscribe } from "./types.ts";
 
 type SessionCommand = Extract<Command, { sessionId: string }>;

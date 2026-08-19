@@ -34,6 +34,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 } from "../types.ts";
+import { appendAssistantMessageDiagnostic, createAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
@@ -597,7 +598,16 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				delete (block as { streamIndex?: number }).streamIndex;
 			}
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = formatProviderError(normalizeProviderError(error));
+			const normalizedError = normalizeProviderError(error);
+			output.errorMessage = formatProviderError(normalizedError);
+			appendAssistantMessageDiagnostic(
+				output,
+				createAssistantMessageDiagnostic("openai_completions_stream_failure", error, {
+					model: model.id,
+					provider: model.provider,
+					...(normalizedError.status === undefined ? {} : { status: normalizedError.status }),
+				}),
+			);
 			// Some providers via OpenRouter give additional information in this field.
 			// normalizeProviderError already stringifies the parsed body (error.error)
 			// into errorMessage, so only append the raw metadata when it is not already
