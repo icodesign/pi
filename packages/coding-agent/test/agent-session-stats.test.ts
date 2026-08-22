@@ -13,7 +13,7 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { getUsageCostBreakdown } from "../src/core/usage-totals.ts";
 import { createInMemoryModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
-import { createTestResourceLoader } from "./utilities.ts";
+import { createTestResourceLoader, createTestSessionCapabilities } from "./utilities.ts";
 
 const model = getModel("anthropic", "claude-sonnet-4-5")!;
 
@@ -73,6 +73,7 @@ async function createSession() {
 	const authStorage = AuthStorage.inMemory();
 	await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));
 	const session = new AgentSession({
+		hostCapabilities: createTestSessionCapabilities(process.cwd()),
 		agent: new Agent({
 			getApiKey: () => "test-key",
 			streamFn: streamSimple,

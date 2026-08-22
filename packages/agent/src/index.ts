@@ -140,6 +140,6 @@ export * from "./harness/utils/truncate.ts";
 export * from "./proxy.ts";
 export * from "./search/index.ts";
 // Stream defaults
-export { setDefaultStreamFn } from "./stream-fn.ts";
+export { getDefaultStreamFn, setDefaultStreamFn } from "./stream-fn.ts";
 // Types
 export * from "./types.ts";

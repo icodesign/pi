@@ -10,7 +10,7 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
-import { createTestResourceLoader } from "./utilities.ts";
+import { createTestResourceLoader, createTestSessionCapabilities } from "./utilities.ts";
 
 describe("AgentSession auto-compaction queue resume", () => {
 	let session: AgentSession;
@@ -39,6 +39,7 @@ describe("AgentSession auto-compaction queue resume", () => {
 		const modelRegistry = await createModelRegistry(authStorage, tempDir);
 
 		session = new AgentSession({
+			hostCapabilities: createTestSessionCapabilities(tempDir),
 			agent,
 			sessionManager,
 			settingsManager,

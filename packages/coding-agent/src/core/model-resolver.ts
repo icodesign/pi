@@ -15,50 +15,9 @@ import { minimatch } from "minimatch";
 import { isValidThinkingLevel } from "../cli/args.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
+import { defaultModelPerProvider, findInitialModelFromDefaults, type InitialModelResult } from "./model-selection.ts";
 
-/** Default model IDs for each known provider */
-export const defaultModelPerProvider: Record<KnownProvider, string> = {
-	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
-	"ant-ling": "Ring-2.6-1T",
-	anthropic: "claude-opus-4-8",
-	openai: "gpt-5.5",
-	"azure-openai-responses": "gpt-5.4",
-	"openai-codex": "gpt-5.5",
-	radius: "auto",
-	nvidia: "nvidia/nemotron-3-super-120b-a12b",
-	deepseek: "deepseek-v4-pro",
-	google: "gemini-3.1-pro-preview",
-	"google-vertex": "gemini-3.1-pro-preview",
-	"github-copilot": "gpt-5.4",
-	openrouter: "moonshotai/kimi-k2.6",
-	"vercel-ai-gateway": "zai/glm-5.1",
-	xai: "grok-4.6",
-	groq: "openai/gpt-oss-120b",
-	cerebras: "gpt-oss-120b",
-	zai: "glm-5.3",
-	"zai-coding-cn": "glm-5.3",
-	mistral: "devstral-medium-latest",
-	minimax: "MiniMax-M2.7",
-	"minimax-cn": "MiniMax-M2.7",
-	moonshotai: "kimi-k2.6",
-	"moonshotai-cn": "kimi-k2.6",
-	huggingface: "moonshotai/Kimi-K2.6",
-	fireworks: "accounts/fireworks/models/kimi-k2p6",
-	together: "moonshotai/Kimi-K2.6",
-	baseten: "zai-org/GLM-5.2",
-	opencode: "kimi-k2.6",
-	"opencode-go": "kimi-k2.6",
-	"kimi-coding": "kimi-for-coding",
-	"cloudflare-workers-ai": "@cf/moonshotai/kimi-k2.6",
-	"cloudflare-ai-gateway": "workers-ai/@cf/moonshotai/kimi-k2.6",
-	"qwen-token-plan": "qwen3.7-max",
-	"qwen-token-plan-cn": "qwen3.7-max",
-	"qwen-token-plan-individual": "qwen3.8-max",
-	xiaomi: "mimo-v2.5-pro",
-	"xiaomi-token-plan-cn": "mimo-v2.5-pro",
-	"xiaomi-token-plan-ams": "mimo-v2.5-pro",
-	"xiaomi-token-plan-sgp": "mimo-v2.5-pro",
-};
+export { defaultModelPerProvider } from "./model-selection.ts";
 
 export interface ScopedModel {
 	model: Model<Api>;
@@ -604,11 +563,7 @@ export function resolveCliModel(options: {
 	};
 }
 
-export interface InitialModelResult {
-	model: Model<Api> | undefined;
-	thinkingLevel: ThinkingLevel;
-	fallbackMessage: string | undefined;
-}
+export type { InitialModelResult } from "./model-selection.ts";
 
 /**
  * Find the initial model to use based on priority:
@@ -641,9 +596,6 @@ export async function findInitialModel(options: {
 		modelRuntime,
 	} = options;
 
-	let model: Model<Api> | undefined;
-	let thinkingLevel: ThinkingLevel = DEFAULT_THINKING_LEVEL;
-
 	// 1. CLI args take priority
 	if (cliProvider && cliModel) {
 		const resolved = resolveCliModel({
@@ -671,40 +623,13 @@ export async function findInitialModel(options: {
 		};
 	}
 
-	// 3. Try saved default from settings if auth is configured.
-	if (defaultProvider && defaultModelId) {
-		const found = modelRuntime.getModel(defaultProvider, defaultModelId);
-		if (found && modelRuntime.hasConfiguredAuth(found.provider)) {
-			model = found;
-			const perModel = modelThinkingLevels?.[`${defaultProvider}/${defaultModelId}`];
-			if (perModel) {
-				thinkingLevel = perModel;
-			} else if (defaultThinkingLevel) {
-				thinkingLevel = defaultThinkingLevel;
-			}
-			return { model, thinkingLevel, fallbackMessage: undefined };
-		}
-	}
-
-	// 4. Try first available model with valid API key
-	const availableModels = [...modelRuntime.getAvailableSnapshot()];
-
-	if (availableModels.length > 0) {
-		// Try to find a default model from known providers
-		for (const provider of Object.keys(defaultModelPerProvider) as KnownProvider[]) {
-			const defaultId = defaultModelPerProvider[provider];
-			const match = availableModels.find((m) => m.provider === provider && m.id === defaultId);
-			if (match) {
-				return { model: match, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
-			}
-		}
-
-		// If no default found, use first available
-		return { model: availableModels[0], thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
-	}
-
-	// 5. No model found
-	return { model: undefined, thinkingLevel: DEFAULT_THINKING_LEVEL, fallbackMessage: undefined };
+	return findInitialModelFromDefaults({
+		defaultProvider,
+		defaultModelId,
+		defaultThinkingLevel,
+		modelThinkingLevels,
+		modelRuntime,
+	});
 }
 
 /**

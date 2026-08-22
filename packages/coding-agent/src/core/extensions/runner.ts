@@ -5,12 +5,12 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model, Provider, ProviderHeaders } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
-import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { KeybindingsConfig } from "../keybindings.ts";
 import type { ModelRegistry } from "../model-registry.ts";
 import type { ScopedModel } from "../model-resolver.ts";
-import type { SessionManager } from "../session-manager.ts";
+import type { SessionManagerContract } from "../session/state.ts";
 import type { BuildSystemPromptOptions } from "../system-prompt.ts";
 import type {
 	BeforeAgentStartEvent,
@@ -162,7 +162,7 @@ export type ExtensionErrorListener = (error: ExtensionError) => void;
 
 export type NewSessionHandler = (options?: {
 	parentSession?: string;
-	setup?: (sessionManager: SessionManager) => Promise<void>;
+	setup?: (sessionManager: SessionManagerContract) => Promise<void>;
 	withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
 }) => Promise<{ cancelled: boolean }>;
 
@@ -255,8 +255,8 @@ const noOpUIContext: ExtensionUIContext = {
 	addAutocompleteProvider: () => {},
 	setEditorComponent: () => {},
 	getEditorComponent: () => undefined,
-	get theme() {
-		return theme;
+	get theme(): Theme {
+		throw new Error("UI not available");
 	},
 	getAllThemes: () => [],
 	getTheme: () => undefined,
@@ -271,7 +271,7 @@ export class ExtensionRunner {
 	private uiContext: ExtensionUIContext;
 	private mode: ExtensionMode = "print";
 	private cwd: string;
-	private sessionManager: SessionManager;
+	private sessionManager: SessionManagerContract;
 	private modelRegistry: ModelRegistry;
 	private errorListeners: Set<ExtensionErrorListener> = new Set();
 	private getModel: () => Model<any> | undefined = () => undefined;
@@ -300,7 +300,7 @@ export class ExtensionRunner {
 		extensions: Extension[],
 		runtime: ExtensionRuntime,
 		cwd: string,
-		sessionManager: SessionManager,
+		sessionManager: SessionManagerContract,
 		modelRegistry: ModelRegistry,
 	) {
 		this.extensions = extensions;

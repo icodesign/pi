@@ -20,10 +20,28 @@ import type {
 	LoadExtensionsResult,
 } from "../src/core/extensions/index.ts";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.ts";
+import { createNodeBashExecutor } from "../src/core/node/bash-executor.ts";
+import { createNodeSessionExporter } from "../src/core/node/session-exporter.ts";
 import type { ResourceLoader } from "../src/core/resource-loader.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+import { createAllToolDefinitions } from "../src/core/tools/index.ts";
 import { createCodingTools } from "../src/index.ts";
+import { normalizeToolResultImages } from "../src/utils/tool-result-images.ts";
+
+export interface TestSessionCapabilityOptions {
+	resetModelProviders?: () => void;
+}
+
+export function createTestSessionCapabilities(cwd = process.cwd(), options: TestSessionCapabilityOptions = {}) {
+	return {
+		bashExecutor: createNodeBashExecutor(),
+		sessionExporter: createNodeSessionExporter(),
+		toolResultImageNormalizer: normalizeToolResultImages,
+		getBaseToolDefinitions: () => createAllToolDefinitions(cwd),
+		resetModelProviders: options.resetModelProviders,
+	};
+}
 
 /**
  * API key for authenticated tests. Tests using this should be wrapped in
@@ -260,12 +278,14 @@ export async function createTestSession(options: TestSessionOptions = {}): Promi
 
 	const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
 	const modelRegistry = await createModelRegistry(authStorage, tempDir);
+	const capabilities = createTestSessionCapabilities(tempDir);
 
 	const session = new AgentSession({
 		agent,
 		sessionManager,
 		settingsManager,
 		cwd: tempDir,
+		hostCapabilities: capabilities,
 		modelRuntime: getModelRuntime(modelRegistry),
 		resourceLoader: createTestResourceLoader(),
 	});

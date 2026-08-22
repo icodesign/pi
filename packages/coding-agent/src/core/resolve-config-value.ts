@@ -5,9 +5,13 @@
 
 import { execSync, spawnSync } from "child_process";
 import { getShellConfig } from "../utils/shell.ts";
+import {
+	clearConfigValueCache,
+	getConfigValueCache,
+	hasConfigValueCache,
+	setConfigValueCache,
+} from "./config-value-cache.ts";
 
-// Cache for shell command results (persists for process lifetime)
-const commandResultCache = new Map<string, string | undefined>();
 const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ENV_VAR_NAME_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
 
@@ -206,12 +210,12 @@ function executeCommandUncached(commandConfig: string): string | undefined {
 }
 
 function executeCommand(commandConfig: string): string | undefined {
-	if (commandResultCache.has(commandConfig)) {
-		return commandResultCache.get(commandConfig);
+	if (hasConfigValueCache(commandConfig)) {
+		return getConfigValueCache(commandConfig);
 	}
 
 	const result = executeCommandUncached(commandConfig);
-	commandResultCache.set(commandConfig, result);
+	setConfigValueCache(commandConfig, result);
 	return result;
 }
 
@@ -281,7 +285,4 @@ export function resolveHeadersOrThrow(
 	return Object.keys(resolved).length > 0 ? resolved : undefined;
 }
 
-/** Clear the config value command cache. Exported for testing. */
-export function clearConfigValueCache(): void {
-	commandResultCache.clear();
-}
+export { clearConfigValueCache };

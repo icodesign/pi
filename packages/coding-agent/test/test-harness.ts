@@ -37,6 +37,7 @@ import {
 	type CreateTestExtensionsResultInput,
 	createTestExtensionsResult,
 	createTestResourceLoader,
+	createTestSessionCapabilities,
 } from "./utilities.ts";
 
 // ============================================================================
@@ -418,6 +419,7 @@ async function createHarnessWithResourceLoader(
 	});
 
 	const session = new AgentSession({
+		hostCapabilities: createTestSessionCapabilities(tempDir),
 		agent,
 		sessionManager,
 		settingsManager,

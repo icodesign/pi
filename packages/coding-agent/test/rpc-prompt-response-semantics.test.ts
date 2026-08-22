@@ -17,7 +17,7 @@ import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { runRpcMode } from "../src/modes/rpc/rpc-mode.ts";
 import { createInMemoryModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
-import { createTestResourceLoader } from "./utilities.ts";
+import { createTestResourceLoader, createTestSessionCapabilities } from "./utilities.ts";
 
 const rpcIo = vi.hoisted(() => ({
 	outputLines: [] as string[],
@@ -135,6 +135,7 @@ async function createRuntimeHost(options: { withAuth: boolean; responseDelayMs: 
 	}
 
 	const session = new AgentSession({
+		hostCapabilities: createTestSessionCapabilities(tempDir),
 		agent,
 		sessionManager,
 		settingsManager,

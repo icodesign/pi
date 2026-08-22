@@ -4,11 +4,13 @@ import { getDocsPath } from "../config.ts";
 const UNKNOWN_PROVIDER = "unknown";
 
 export function getProviderLoginHelp(): string {
-	return [
-		"Use /login to log into a provider via OAuth or API key. See:",
-		`  ${join(getDocsPath(), "providers.md")}`,
-		`  ${join(getDocsPath(), "models.md")}`,
-	].join("\n");
+	const lines = ["Use /login to log into a provider via OAuth or API key."];
+	const docsPath = getDocsPath();
+	if (docsPath) {
+		lines[0] += " See:";
+		lines.push(`  ${join(docsPath, "providers.md")}`, `  ${join(docsPath, "models.md")}`);
+	}
+	return lines.join("\n");
 }
 
 export function formatNoModelsAvailableMessage(): string {

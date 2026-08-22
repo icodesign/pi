@@ -1,6 +1,6 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type AgentMessage, type StreamFn, setDefaultStreamFn } from "@earendil-works/pi-agent-core";
+import { type AssistantMessage, createAssistantMessageEventStream, type Context, type Model } from "@earendil-works/pi-ai";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type CompactionPreparation,
 	compact,
@@ -9,17 +9,15 @@ import {
 	generateSummaryWithUsage,
 } from "../src/core/compaction/index.ts";
 
-const { completeSimpleMock } = vi.hoisted(() => ({
-	completeSimpleMock: vi.fn(),
-}));
+const streamFnMock = vi.fn<StreamFn>();
 
-vi.mock("@earendil-works/pi-ai/compat", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@earendil-works/pi-ai/compat")>();
-	return {
-		...actual,
-		completeSimple: completeSimpleMock,
+function streamResponse(response: AssistantMessage): StreamFn {
+	return async () => {
+		const stream = createAssistantMessageEventStream();
+		stream.push({ type: "done", reason: response.stopReason, message: response });
+		return stream;
 	};
-});
+}
 
 function createModel(
 	reasoning: boolean,
@@ -69,8 +67,13 @@ const messages: AgentMessage[] = [{ role: "user", content: "Summarize this.", ti
 
 describe("generateSummary reasoning options", () => {
 	beforeEach(() => {
-		completeSimpleMock.mockReset();
-		completeSimpleMock.mockResolvedValue(mockSummaryResponse);
+		streamFnMock.mockReset();
+		streamFnMock.mockImplementation(streamResponse(mockSummaryResponse));
+		setDefaultStreamFn(streamFnMock);
+	});
+
+	afterEach(() => {
+		setDefaultStreamFn(undefined);
 	});
 
 	it("uses the provided thinking level for reasoning-capable models", async () => {
@@ -89,8 +92,8 @@ describe("generateSummary reasoning options", () => {
 		expect(result.text).toBe("## Goal\nTest summary");
 		expect(result.usage).toEqual(mockSummaryResponse.usage);
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({
+		expect(streamFnMock).toHaveBeenCalledTimes(1);
+		expect(streamFnMock.mock.calls[0][2]).toMatchObject({
 			reasoning: "medium",
 			apiKey: "test-key",
 		});
@@ -106,7 +109,7 @@ describe("generateSummary reasoning options", () => {
 		await generateSummary(messages, createModel(false), 2000, "test-key");
 		await generateSummary(messages, createModel(false), 2000, "test-key");
 
-		const requestOptions = completeSimpleMock.mock.calls.map((call) => call[2]);
+		const requestOptions = streamFnMock.mock.calls.map((call) => call[2]);
 		expect(requestOptions).toHaveLength(2);
 		expect(requestOptions.every((options) => options?.cacheRetention === "none")).toBe(true);
 		expect(requestOptions.every((options) => options?.toolChoice === "none")).toBe(true);
@@ -122,7 +125,7 @@ describe("generateSummary reasoning options", () => {
 			{ sessionId: "current-routing-session", cacheRetention: "long", toolChoice: "auto" },
 		);
 
-		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({
+		expect(streamFnMock.mock.calls[0][2]).toMatchObject({
 			sessionId: "current-routing-session",
 			cacheRetention: "none",
 			toolChoice: "none",
@@ -142,14 +145,14 @@ describe("generateSummary reasoning options", () => {
 
 		await compact(preparation, createModel(false), "test-key");
 
-		const requestContext = completeSimpleMock.mock.calls[0][1] as Context;
+		const requestContext = streamFnMock.mock.calls[0][1] as Context;
 		const prompt = JSON.stringify(requestContext.messages);
 		expect(prompt).toContain("This is the PREFIX of a turn that was too large to keep");
 		expect(prompt).toContain("<conversation>");
 	});
 
 	it("rejects tool calls from conversation summaries", async () => {
-		completeSimpleMock.mockResolvedValueOnce(mockToolCallResponse);
+		streamFnMock.mockImplementationOnce(streamResponse(mockToolCallResponse));
 
 		await expect(generateSummaryWithUsage(messages, createModel(false), 2000, "test-key")).rejects.toThrow(
 			"Summarization attempted to call a tool",
@@ -157,7 +160,7 @@ describe("generateSummary reasoning options", () => {
 	});
 
 	it("rejects tool calls from split-turn summaries", async () => {
-		completeSimpleMock.mockResolvedValueOnce(mockToolCallResponse);
+		streamFnMock.mockImplementationOnce(streamResponse(mockToolCallResponse));
 		const preparation: CompactionPreparation = {
 			firstKeptEntryId: "entry-keep",
 			messagesToSummarize: [],
@@ -174,11 +177,11 @@ describe("generateSummary reasoning options", () => {
 	});
 
 	it("rejects a length-limited history summary", async () => {
-		completeSimpleMock.mockResolvedValueOnce({
+		streamFnMock.mockImplementationOnce(streamResponse({
 			...mockSummaryResponse,
 			stopReason: "length",
 			content: [{ type: "text", text: "partial" }],
-		});
+		}));
 
 		await expect(generateSummaryWithUsage(messages, createModel(false), 2000, "test-key")).rejects.toThrow(
 			"generation hit the token cap",
@@ -186,11 +189,11 @@ describe("generateSummary reasoning options", () => {
 	});
 
 	it("rejects a length-limited split-turn summary", async () => {
-		completeSimpleMock.mockResolvedValueOnce({
+		streamFnMock.mockImplementationOnce(streamResponse({
 			...mockSummaryResponse,
 			stopReason: "length",
 			content: [{ type: "text", text: "partial" }],
-		});
+		}));
 		const preparation: CompactionPreparation = {
 			firstKeptEntryId: "entry-keep",
 			messagesToSummarize: [],
@@ -219,11 +222,11 @@ describe("generateSummary reasoning options", () => {
 			"off",
 		);
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({
+		expect(streamFnMock).toHaveBeenCalledTimes(1);
+		expect(streamFnMock.mock.calls[0][2]).toMatchObject({
 			apiKey: "test-key",
 		});
-		expect(completeSimpleMock.mock.calls[0][2]).not.toHaveProperty("reasoning");
+		expect(streamFnMock.mock.calls[0][2]).not.toHaveProperty("reasoning");
 	});
 
 	it("does not set reasoning for non-reasoning models", async () => {
@@ -239,11 +242,11 @@ describe("generateSummary reasoning options", () => {
 			"medium",
 		);
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		expect(completeSimpleMock.mock.calls[0][2]).toMatchObject({
+		expect(streamFnMock).toHaveBeenCalledTimes(1);
+		expect(streamFnMock.mock.calls[0][2]).toMatchObject({
 			apiKey: "test-key",
 		});
-		expect(completeSimpleMock.mock.calls[0][2]).not.toHaveProperty("reasoning");
+		expect(streamFnMock.mock.calls[0][2]).not.toHaveProperty("reasoning");
 	});
 
 	it("leaves Anthropic refusal fallback handling to pi-ai model metadata", async () => {
@@ -262,15 +265,15 @@ describe("generateSummary reasoning options", () => {
 			"test-key",
 		);
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		expect(completeSimpleMock.mock.calls[0][2]).not.toHaveProperty("refusalFallbacks");
+		expect(streamFnMock).toHaveBeenCalledTimes(1);
+		expect(streamFnMock.mock.calls[0][2]).not.toHaveProperty("refusalFallbacks");
 	});
 
 	it("does not set Anthropic refusal fallback for models without allowed fallback targets", async () => {
 		await generateSummary(messages, createModel(true), 2000, "test-key");
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		expect(completeSimpleMock.mock.calls[0][2]).not.toHaveProperty("refusalFallbacks");
+		expect(streamFnMock).toHaveBeenCalledTimes(1);
+		expect(streamFnMock.mock.calls[0][2]).not.toHaveProperty("refusalFallbacks");
 	});
 
 	it("clamps compaction summary maxTokens to the model output cap", async () => {
@@ -293,6 +296,6 @@ describe("generateSummary reasoning options", () => {
 			totalTokens: 40,
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		});
-		expect(completeSimpleMock.mock.calls.map((call) => call[2]?.maxTokens)).toEqual([128000, 128000]);
+		expect(streamFnMock.mock.calls.map((call) => call[2]?.maxTokens)).toEqual([128000, 128000]);
 	});
 });
