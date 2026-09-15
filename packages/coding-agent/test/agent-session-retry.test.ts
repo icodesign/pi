@@ -10,7 +10,7 @@ import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
-import { createTestResourceLoader } from "./utilities.ts";
+import { createTestResourceLoader, createTestSessionCapabilities } from "./utilities.ts";
 
 class MockAssistantStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
 	constructor() {
@@ -111,6 +111,7 @@ describe("AgentSession retry", () => {
 		settingsManager.applyOverrides({ retry: { enabled: true, maxRetries, baseDelayMs: 1 } });
 
 		session = new AgentSession({
+			hostCapabilities: createTestSessionCapabilities(tempDir),
 			agent,
 			sessionManager,
 			settingsManager,
@@ -212,6 +213,7 @@ describe("AgentSession retry", () => {
 		await authStorage.modify("anthropic", async () => ({ type: "api_key", key: "test-key" }));
 		settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 } });
 		session = new AgentSession({
+			hostCapabilities: createTestSessionCapabilities(tempDir),
 			agent,
 			sessionManager,
 			settingsManager,
@@ -298,6 +300,7 @@ describe("AgentSession retry", () => {
 		settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 } });
 
 		session = new AgentSession({
+			hostCapabilities: createTestSessionCapabilities(tempDir),
 			agent,
 			sessionManager,
 			settingsManager,

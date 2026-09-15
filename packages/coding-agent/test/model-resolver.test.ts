@@ -19,7 +19,7 @@ import {
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
-import { createTestResourceLoader } from "./utilities.ts";
+import { createTestResourceLoader, createTestSessionCapabilities } from "./utilities.ts";
 
 // Mock models for testing
 const mockModels: Model<"anthropic-messages">[] = [
@@ -864,6 +864,7 @@ describe("default model selection", () => {
 				cwd: tempDir,
 				modelRuntime,
 				resourceLoader: createTestResourceLoader(),
+				hostCapabilities: createTestSessionCapabilities(tempDir),
 				scopedModels: options.scoped ? [{ model: sonnet }] : [],
 			});
 

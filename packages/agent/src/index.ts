@@ -143,10 +143,12 @@ export {
 	type Skill,
 	toError,
 } from "./harness/types.ts";
-export { applyShellOutputUpdate } from "./harness/utils/output-capture.ts";
+export { applyShellOutputUpdate, OutputCapture } from "./harness/utils/output-capture.ts";
 export * from "./harness/utils/shell-output.ts";
 export * from "./harness/utils/truncate.ts";
 export * from "./proxy.ts";
 export * from "./search/index.ts";
-export { setDefaultStreamFn } from "./stream-fn.ts";
+// Stream defaults
+export { getDefaultStreamFn, setDefaultStreamFn } from "./stream-fn.ts";
+// Types
 export * from "./types.ts";

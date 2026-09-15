@@ -5,17 +5,17 @@
  * and after compaction the session is reloaded.
  */
 
-import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
+import {
+	type AgentMessage,
+	getDefaultStreamFn,
+	type StreamFn,
+	type ThinkingLevel,
+} from "@earendil-works/pi-agent-core";
 import { contentText, type RetryCallbacks, type RetryPolicy, retryAssistantCall, uuidv7 } from "@earendil-works/pi-ai";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions, Usage } from "@earendil-works/pi-ai/compat";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { convertToLlm } from "../messages.ts";
-import {
-	buildSessionContext,
-	type CompactionEntry,
-	type SessionEntry,
-	sessionEntryToContextMessages,
-} from "../session-manager.ts";
+import { buildSessionContext, sessionEntryToContextMessages } from "../session/context.ts";
+import type { CompactionEntry, SessionEntry } from "../session-manager.ts";
 import {
 	computeFileLists,
 	createFileOps,
@@ -591,10 +591,10 @@ export async function completeSummarization(
 		cacheRetention: "none",
 		sessionId: options.sessionId ?? uuidv7(),
 	};
-	const produce = async (): Promise<AssistantMessage> =>
-		streamFn
-			? (await streamFn(model, context, requestOptions)).result()
-			: completeSimple(model, context, requestOptions);
+	const produce = async (): Promise<AssistantMessage> => {
+		const stream = await (streamFn ?? getDefaultStreamFn())(model, context, requestOptions);
+		return stream.result();
+	};
 	return retryAssistantCall(produce, retry, requestOptions.signal, callbacks);
 }
 

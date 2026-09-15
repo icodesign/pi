@@ -398,6 +398,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 			const toolCallBlocksById = new Map<string, StreamingToolCallBlock>();
 			const blocks = output.content as StreamingBlock[];
 			const getContentIndex = (block: StreamingBlock) => blocks.indexOf(block);
+			const finishedBlocks = new Set<StreamingBlock>();
 			const getCustomToolCallInput = (block: StreamingToolCallBlock): string => {
 				const property = block.customInput?.property;
 				if (property === undefined) return "";
@@ -421,10 +422,12 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				return delta;
 			};
 			const finishBlock = (block: StreamingBlock) => {
+				if (finishedBlocks.has(block)) return;
 				const contentIndex = getContentIndex(block);
 				if (contentIndex === -1) {
 					return;
 				}
+				finishedBlocks.add(block);
 				if (block.type === "text") {
 					stream.push({
 						type: "text_end",
@@ -579,21 +582,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				}
 
 				if (choice.delta) {
-					if (
-						choice.delta.content !== null &&
-						choice.delta.content !== undefined &&
-						choice.delta.content.length > 0
-					) {
-						const block = ensureTextBlock();
-						block.text += choice.delta.content;
-						stream.push({
-							type: "text_delta",
-							contentIndex: getContentIndex(block),
-							delta: choice.delta.content,
-							partial: output,
-						});
-					}
-
 					// Some endpoints return reasoning in reasoning_content (llama.cpp),
 					// or reasoning (other openai compatible endpoints)
 					// Use the first non-empty reasoning field to avoid duplication
@@ -627,7 +615,39 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 						}
 					}
 
+					const reasoningDetails = (choice.delta as { reasoning_details?: unknown }).reasoning_details;
+					if (Array.isArray(reasoningDetails)) {
+						for (const detail of reasoningDetails) {
+							if (!isOpenAIReasoningDetail(detail)) continue;
+							ensureThinkingBlock("");
+							streamedReasoningDetails ??= [];
+							// Keep provider replay data in the existing signature slot. OpenRouter streams
+							// reasoning_details as deltas: consecutive text/summary deltas are merged into
+							// logical entries, while encrypted entries remain opaque and discrete.
+							appendOpenAIReasoningDetail(streamedReasoningDetails, detail);
+						}
+					}
+
+					if (
+						choice.delta.content !== null &&
+						choice.delta.content !== undefined &&
+						choice.delta.content.length > 0
+					) {
+						// OpenAI-compatible reasoning streams have no explicit boundary event.
+						// The first answer token is the authoritative transition out of thinking.
+						if (thinkingBlock) finishBlock(thinkingBlock);
+						const block = ensureTextBlock();
+						block.text += choice.delta.content;
+						stream.push({
+							type: "text_delta",
+							contentIndex: getContentIndex(block),
+							delta: choice.delta.content,
+							partial: output,
+						});
+					}
+
 					if (choice?.delta?.tool_calls) {
+						if (thinkingBlock) finishBlock(thinkingBlock);
 						for (const toolCall of choice.delta.tool_calls as StreamingToolCallDelta[]) {
 							const block = ensureToolCallBlock(toolCall);
 							if (!block.id && toolCall.id) {
@@ -656,20 +676,9 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 							});
 						}
 					}
-
-					const reasoningDetails = (choice.delta as { reasoning_details?: unknown }).reasoning_details;
-					if (Array.isArray(reasoningDetails)) {
-						for (const detail of reasoningDetails) {
-							if (!isOpenAIReasoningDetail(detail)) continue;
-							ensureThinkingBlock("");
-							streamedReasoningDetails ??= [];
-							// Keep provider replay data in the existing signature slot. OpenRouter streams
-							// reasoning_details as deltas: consecutive text/summary deltas are merged into
-							// logical entries, while encrypted entries remain opaque and discrete.
-							appendOpenAIReasoningDetail(streamedReasoningDetails, detail);
-						}
-					}
 				}
+
+				if (choice.finish_reason && compat.finishReasonTerminatesStream) break;
 			}
 
 			for (const block of blocks) {
@@ -1636,6 +1645,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 			!isGrok && !isZai && !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isAntLing,
 		supportsUsageInStreaming: true,
 		supportsFinishReason: true,
+		finishReasonTerminatesStream: isDeepSeek,
 		maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
 		requiresToolResultName: false,
 		requiresAssistantAfterToolResult: false,
@@ -1689,6 +1699,7 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 		supportsReasoningEffort: model.compat.supportsReasoningEffort ?? detected.supportsReasoningEffort,
 		supportsUsageInStreaming: model.compat.supportsUsageInStreaming ?? detected.supportsUsageInStreaming,
 		supportsFinishReason: model.compat.supportsFinishReason ?? detected.supportsFinishReason,
+		finishReasonTerminatesStream: model.compat.finishReasonTerminatesStream ?? detected.finishReasonTerminatesStream,
 		maxTokensField: model.compat.maxTokensField ?? detected.maxTokensField,
 		requiresToolResultName: model.compat.requiresToolResultName ?? detected.requiresToolResultName,
 		requiresAssistantAfterToolResult:

@@ -15,9 +15,15 @@ import type {
 	Model,
 } from "@earendil-works/pi-ai/compat";
 import { registerFauxProvider, streamSimple } from "@earendil-works/pi-ai/compat";
-import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
+import {
+	AgentSession,
+	type AgentSessionEvent,
+	type BashExecutor,
+	type SessionExporter,
+	type ToolResultImageNormalizer,
+} from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
-import type { ExtensionRunner } from "../../src/core/extensions/index.ts";
+import type { ExtensionRunner, ToolDefinition } from "../../src/core/extensions/index.ts";
 import { convertToLlm } from "../../src/core/messages.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import type { Settings } from "../../src/core/settings-manager.ts";
@@ -27,6 +33,7 @@ import {
 	type CreateTestExtensionsResultInput,
 	createTestExtensionsResult,
 	createTestResourceLoader,
+	createTestSessionCapabilities,
 } from "../utilities.ts";
 
 type MessageTextPart = { type: "text"; text: string };
@@ -72,6 +79,11 @@ export interface HarnessOptions {
 	extensionFactories?: Array<InlineExtension | CreateTestExtensionsResultInput>;
 	withConfiguredAuth?: boolean;
 	modelsJson?: Record<string, unknown>;
+	bashExecutor?: BashExecutor;
+	sessionExporter?: SessionExporter | null;
+	toolResultImageNormalizer?: ToolResultImageNormalizer;
+	resetModelProviders?: () => void;
+	getBaseToolDefinitions?: () => Record<string, ToolDefinition>;
 }
 
 export interface Harness {
@@ -178,12 +190,23 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 		: undefined;
 	const resourceLoader =
 		options.resourceLoader ?? createTestResourceLoader(extensionsResult ? { extensionsResult } : undefined);
+	const capabilities = createTestSessionCapabilities(tempDir, {
+		resetModelProviders: options.resetModelProviders,
+	});
 
 	const session = new AgentSession({
 		agent,
 		sessionManager,
 		settingsManager,
 		cwd: tempDir,
+		hostCapabilities: {
+			...capabilities,
+			getBaseToolDefinitions: options.getBaseToolDefinitions ?? capabilities.getBaseToolDefinitions,
+			bashExecutor: options.bashExecutor ?? capabilities.bashExecutor,
+			sessionExporter:
+				options.sessionExporter === null ? undefined : (options.sessionExporter ?? capabilities.sessionExporter),
+			toolResultImageNormalizer: options.toolResultImageNormalizer ?? capabilities.toolResultImageNormalizer,
+		},
 		modelRuntime: getModelRuntime(modelRegistry),
 		resourceLoader,
 		baseToolsOverride: toolMap,

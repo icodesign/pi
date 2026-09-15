@@ -529,6 +529,15 @@ describe("ExtensionRunner", () => {
 			expect(ctx.hasUI).toBe(false);
 		});
 
+		it("reports unavailable theme access in the default headless UI context", async () => {
+			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
+			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);
+			runner.bindCore(extensionActions, extensionContextActions);
+
+			const ctx = runner.createContext();
+			expect(() => ctx.ui.theme).toThrowError("UI not available");
+		});
+
 		it("exposes project trust state on ExtensionContext", async () => {
 			const result = await discoverAndLoadExtensions([], tempDir, tempDir);
 			const runner = new ExtensionRunner(result.extensions, result.runtime, tempDir, sessionManager, modelRegistry);

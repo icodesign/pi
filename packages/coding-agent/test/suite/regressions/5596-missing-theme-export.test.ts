@@ -11,7 +11,7 @@ import { SessionManager } from "../../../src/core/session-manager.ts";
 import { SettingsManager } from "../../../src/core/settings-manager.ts";
 import { initTheme } from "../../../src/modes/interactive/theme/theme.ts";
 import { createInMemoryModelRegistry, getModelRuntime } from "../../model-runtime-test-utils.ts";
-import { createTestResourceLoader } from "../../utilities.ts";
+import { createTestResourceLoader, createTestSessionCapabilities } from "../../utilities.ts";
 
 describe("regression #5596: missing configured theme export", () => {
 	const cleanups: Array<() => void> = [];
@@ -64,6 +64,7 @@ describe("regression #5596: missing configured theme export", () => {
 			streamFn: streamSimple,
 		});
 		const session = new AgentSession({
+			hostCapabilities: createTestSessionCapabilities(tempDir),
 			agent,
 			sessionManager,
 			settingsManager,

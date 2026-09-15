@@ -27,6 +27,7 @@ const compat = {
 	supportsReasoningEffort: true,
 	supportsUsageInStreaming: true,
 	supportsFinishReason: true,
+	finishReasonTerminatesStream: false,
 	maxTokensField: "max_completion_tokens",
 	requiresToolResultName: false,
 	requiresAssistantAfterToolResult: false,

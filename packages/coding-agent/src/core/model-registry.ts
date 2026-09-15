@@ -10,9 +10,10 @@ import type {
 	Provider,
 	ProviderHeaders,
 } from "@earendil-works/pi-ai";
-import type { ModelRuntime } from "./model-runtime.ts";
+import type { ModelRuntimeContract } from "./model-runtime-contract.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 
+export { clearConfigValueCache as clearApiKeyCache } from "./config-value-cache.ts";
 export type { ProviderConfigInput } from "./provider-composer.ts";
 export type ResolvedRequestAuth =
 	| {
@@ -23,16 +24,14 @@ export type ResolvedRequestAuth =
 			env?: Record<string, string>;
 	  }
 	| { ok: false; error: string };
-export { clearApiKeyCache } from "./provider-composer.ts";
-
 /**
  * Synchronous compatibility facade exposed to extensions.
  * Coding-agent internals use ModelRuntime directly.
  */
 export class ModelRegistry {
-	private readonly runtime: ModelRuntime;
+	private readonly runtime: ModelRuntimeContract;
 
-	constructor(runtime: ModelRuntime) {
+	constructor(runtime: ModelRuntimeContract) {
 		this.runtime = runtime;
 	}
 

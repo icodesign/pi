@@ -576,6 +576,8 @@ export interface OpenAICompletionsCompat {
 	supportsUsageInStreaming?: boolean;
 	/** Whether streamed responses include `finish_reason`. When false, pi infers `stop` or `toolUse` when the stream ends. Default: true. */
 	supportsFinishReason?: boolean;
+	/** Whether the chunk carrying `finish_reason` is the provider's last semantic chunk, including usage. Allows completion without waiting for the trailing SSE sentinel. Default: auto-detected from the provider. */
+	finishReasonTerminatesStream?: boolean;
 	/** Which field to use for max tokens. Default: auto-detected from URL. */
 	maxTokensField?: "max_completion_tokens" | "max_tokens";
 	/** Whether tool results require the `name` field. Default: auto-detected from URL. */

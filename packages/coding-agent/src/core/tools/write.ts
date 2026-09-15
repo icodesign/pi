@@ -8,16 +8,14 @@ import { withFileMutationQueue } from "./file-mutation-queue.ts";
 import { resolveToCwd } from "./path-utils.ts";
 import { writeRenderers } from "./renderers/write.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
+import { writeToolSystemPromptContribution } from "./tool-prompt-contributions.ts";
 
 const writeSchema = Type.Object({
 	path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
 	content: Type.String({ description: "Content to write to the file" }),
 });
 
-export const writeToolSystemPromptContribution = {
-	snippet: "Create or overwrite files",
-	guidelines: ["Use write only for new files or complete rewrites."],
-} as const;
+export { writeToolSystemPromptContribution };
 
 export type WriteToolInput = Static<typeof writeSchema>;
 

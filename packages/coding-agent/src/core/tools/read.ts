@@ -10,6 +10,7 @@ import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
 import { resolveReadPathAsync } from "./path-utils.ts";
 import { readRenderers } from "./renderers/read.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
+import { readToolSystemPromptContribution } from "./tool-prompt-contributions.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
 
 const readSchema = Type.Object({
@@ -18,10 +19,7 @@ const readSchema = Type.Object({
 	limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
 });
 
-export const readToolSystemPromptContribution = {
-	snippet: "Read file contents",
-	guidelines: ["Use read to examine files instead of cat or sed."],
-} as const;
+export { readToolSystemPromptContribution };
 
 export type ReadToolInput = Static<typeof readSchema>;
 

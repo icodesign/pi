@@ -25,34 +25,22 @@ import type {
 	PrepareNextTurnContext,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import { contentText } from "@earendil-works/pi-ai";
-import type {
-	AssistantMessage,
-	AuthResult,
-	ImageContent,
-	Model,
-	ProviderHeaders,
-	TextContent,
-	Usage,
-} from "@earendil-works/pi-ai/compat";
+import type { AssistantMessage, ImageContent, Model, ProviderHeaders, TextContent, Usage } from "@earendil-works/pi-ai";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
+	contentText,
 	getSupportedThinkingLevels,
 	isContextOverflow,
 	isRecoverableLength,
 	isRetryableAssistantError,
 	modelsAreEqual,
 	type RetryCallbacks,
-	resetApiProviders,
-	streamSimple,
-} from "@earendil-works/pi-ai/compat";
-import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
+} from "@earendil-works/pi-ai";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { sleep } from "../utils/sleep.ts";
-import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
-import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
+import type { BashResult } from "./bash-executor.ts";
 import {
 	type CompactionPreparation,
 	type CompactionResult,
@@ -66,50 +54,47 @@ import {
 	shouldCompact,
 } from "./compaction/index.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./defaults.ts";
-import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
-import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
-import {
-	type ContextUsage,
-	type ExtensionCommandContextActions,
-	type ExtensionErrorListener,
-	type ExtensionMode,
-	ExtensionRunner,
-	type ExtensionUIContext,
-	type InputSource,
-	type MessageEndEvent,
-	type MessageStartEvent,
-	type MessageUpdateEvent,
-	type ReplacedSessionContext,
-	type SessionBeforeCompactResult,
-	type SessionBeforeTreeResult,
-	type SessionCompactFailedEvent,
-	type SessionStartEvent,
-	type ShutdownHandler,
-	type ToolDefinition,
-	type ToolExecutionEndEvent,
-	type ToolExecutionStartEvent,
-	type ToolExecutionUpdateEvent,
-	type ToolInfo,
-	type TreePreparation,
-	type TurnEndEvent,
-	type TurnStartEvent,
-	wrapRegisteredTools,
-} from "./extensions/index.ts";
-import { emitSessionShutdownEvent } from "./extensions/runner.ts";
+import type { ExtensionErrorListener, ShutdownHandler } from "./extensions/runner.ts";
+import { ExtensionRunner, emitSessionShutdownEvent } from "./extensions/runner.ts";
+import type {
+	ContextUsage,
+	ExtensionCommandContextActions,
+	ExtensionMode,
+	ExtensionUIContext,
+	InputSource,
+	MessageEndEvent,
+	MessageStartEvent,
+	MessageUpdateEvent,
+	ReplacedSessionContext,
+	SessionBeforeCompactResult,
+	SessionBeforeTreeResult,
+	SessionCompactFailedEvent,
+	SessionStartEvent,
+	ToolDefinition,
+	ToolExecutionEndEvent,
+	ToolExecutionStartEvent,
+	ToolExecutionUpdateEvent,
+	ToolInfo,
+	TreePreparation,
+	TurnEndEvent,
+	TurnStartEvent,
+} from "./extensions/types.ts";
+import { wrapRegisteredTools } from "./extensions/wrapper.ts";
 import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
+import type { ModelRuntimeContract } from "./model-runtime-contract.ts";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.ts";
-import { exportSessionToJsonl } from "./session-export.ts";
+import { getLatestCompactionEntry } from "./session/context.ts";
+import type { SessionManagerContract } from "./session/state.ts";
 import type { BranchSummaryEntry, CompactionEntry, SessionEntry, SessionManager } from "./session-manager.ts";
-import { getLatestCompactionEntry } from "./session-manager.ts";
-import type { SettingsManager } from "./settings-manager.ts";
+import type { SettingsManagerContract } from "./settings/manager-core.ts";
+import type { SettingsManager as NodeSettingsManager } from "./settings-manager.ts";
 import type { SlashCommandInfo } from "./slash-commands.ts";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.ts";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.ts";
-import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts";
-import { createAllToolDefinitions } from "./tools/index.ts";
+import type { BashOperations } from "./tools/bash.ts";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
 import { addUsageToTotals, createUsageTotals } from "./usage-totals.ts";
 
@@ -197,11 +182,17 @@ function withoutDeletedHeaders(headers: ProviderHeaders | undefined): Record<str
 		: undefined;
 }
 
-export interface AgentSessionConfig {
+export interface AgentSessionConfig<
+	TModelRuntime extends ModelRuntimeContract = ModelRuntime,
+	TSessionManager extends SessionManagerContract = SessionManager,
+	TSettingsManager extends SettingsManagerContract = NodeSettingsManager,
+> {
 	agent: Agent;
-	sessionManager: SessionManager;
-	settingsManager: SettingsManager;
+	sessionManager: TSessionManager;
+	settingsManager: TSettingsManager;
 	cwd: string;
+	/** Host capabilities that cannot be provided by the portable session core. */
+	hostCapabilities: AgentSessionHostCapabilities<TSessionManager>;
 	/** Models to cycle through with Ctrl+P (from --models flag) */
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 	/** Resource loader for extensions, skills, prompts, themes, context files, and system prompt */
@@ -209,7 +200,7 @@ export interface AgentSessionConfig {
 	/** SDK custom tools registered outside extensions */
 	customTools?: ToolDefinition[];
 	/** Canonical model/auth runtime used by coding-agent internals. */
-	modelRuntime: ModelRuntime;
+	modelRuntime: TModelRuntime;
 	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
 	initialActiveToolNames?: string[];
 	/** Optional allowlist of tool names. When provided, only these tool names are exposed. */
@@ -228,6 +219,54 @@ export interface AgentSessionConfig {
 	/** Session start event metadata emitted when extensions bind to this runtime. */
 	sessionStartEvent?: SessionStartEvent;
 }
+
+/** Capabilities supplied by the host around the environment-neutral session core. */
+export interface AgentSessionHostCapabilities<TSessionManager extends SessionManagerContract = SessionManagerContract> {
+	/** Environment capability used to execute bash commands. */
+	bashExecutor?: BashExecutor;
+	/** Session export capability supplied by the host environment. */
+	sessionExporter?: SessionExporter<NoInfer<TSessionManager>>;
+	/** Normalizes tool-result image blocks before they enter session history. */
+	toolResultImageNormalizer: ToolResultImageNormalizer;
+	/** Full built-in tool definitions supplied by the host runtime. */
+	getBaseToolDefinitions: () => Record<string, ToolDefinition>;
+	/** Optional host callback to reset provider registrations during reload. */
+	resetModelProviders?: () => void;
+}
+
+/** Environment capability used by AgentSession.executeBash(). */
+export type BashExecutor = (
+	command: string,
+	cwd: string,
+	options: {
+		onChunk: (chunk: string) => void;
+		signal: AbortSignal;
+		operations?: BashOperations;
+		shellPath?: string;
+	},
+) => Promise<BashResult>;
+
+/** Host capability for presentation-specific session exports. */
+export interface SessionExporter<TSessionManager extends SessionManagerContract = SessionManagerContract> {
+	exportToHtml(
+		sessionManager: TSessionManager,
+		state: AgentState,
+		options: {
+			outputPath?: string;
+			themeName?: string;
+			settingsThemeName?: string;
+			getToolDefinition: (name: string) => ToolDefinition | undefined;
+			cwd: string;
+		},
+	): Promise<string>;
+	exportToJsonl(sessionManager: TSessionManager, outputPath?: string): string;
+}
+
+/** Host capability for normalizing tool-result image blocks before persistence. */
+export type ToolResultImageNormalizer = (
+	content: Array<TextContent | ImageContent>,
+	options?: { autoResizeImages?: boolean },
+) => Promise<Array<TextContent | ImageContent>>;
 
 export interface ExtensionBindings {
 	uiContext?: ExtensionUIContext;
@@ -307,10 +346,14 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
 // AgentSession Class
 // ============================================================================
 
-export class AgentSession {
+export class AgentSession<
+	TModelRuntime extends ModelRuntimeContract = ModelRuntime,
+	TSessionManager extends SessionManagerContract = SessionManager,
+	TSettingsManager extends SettingsManagerContract = NodeSettingsManager,
+> {
 	readonly agent: Agent;
-	readonly sessionManager: SessionManager;
-	readonly settingsManager: SettingsManager;
+	readonly sessionManager: TSessionManager;
+	readonly settingsManager: TSettingsManager;
 
 	private _scopedModels: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 
@@ -351,6 +394,7 @@ export class AgentSession {
 	private _turnIndex = 0;
 
 	private _resourceLoader: ResourceLoader;
+	private readonly _hostCapabilities: AgentSessionHostCapabilities<TSessionManager>;
 	private _customTools: ToolDefinition[];
 	private _baseToolDefinitions: Map<string, ToolDefinition> = new Map();
 	private _cwd: string;
@@ -368,7 +412,7 @@ export class AgentSession {
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
 
-	private _modelRuntime: ModelRuntime;
+	private _modelRuntime: TModelRuntime;
 
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
@@ -381,12 +425,13 @@ export class AgentSession {
 	private _baseSystemPromptOptions!: BuildSystemPromptOptions;
 	private _systemPromptOverride?: string;
 
-	constructor(config: AgentSessionConfig) {
+	constructor(config: AgentSessionConfig<TModelRuntime, TSessionManager, TSettingsManager>) {
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
 		this.settingsManager = config.settingsManager;
 		this._scopedModels = config.scopedModels ?? [];
 		this._resourceLoader = config.resourceLoader;
+		this._hostCapabilities = config.hostCapabilities;
 		this._customTools = config.customTools ?? [];
 		this._cwd = config.cwd;
 		this._modelRuntime = config.modelRuntime;
@@ -409,45 +454,8 @@ export class AgentSession {
 		});
 	}
 
-	get modelRuntime(): ModelRuntime {
+	get modelRuntime(): TModelRuntime {
 		return this._modelRuntime;
-	}
-
-	private async _getRequiredRequestAuth(model: Model<any>): Promise<{
-		model: Model<any>;
-		apiKey?: string;
-		headers?: Record<string, string>;
-		env?: Record<string, string>;
-	}> {
-		let result: AuthResult | undefined;
-		try {
-			result = await this._modelRuntime.getAuth(model);
-		} catch (error) {
-			const cause = error instanceof Error ? error.cause : undefined;
-			if (cause instanceof Error && cause.message === "authHeader requires a resolved API key") {
-				throw new Error(formatNoApiKeyFoundMessage(model.provider));
-			}
-			throw error;
-		}
-		if (result && (result.auth.apiKey || result.auth.headers)) {
-			const requestModel = result.auth.baseUrl ? { ...model, baseUrl: result.auth.baseUrl } : model;
-			return {
-				model: requestModel,
-				apiKey: result.auth.apiKey,
-				headers: withoutDeletedHeaders(result.auth.headers),
-				env: result.env,
-			};
-		}
-
-		const isOAuth = this._modelRuntime.isUsingOAuth(model.provider);
-		if (isOAuth) {
-			throw new Error(
-				`Authentication failed for "${model.provider}". ` +
-					`Credentials may have expired or network is unavailable. ` +
-					`Run '/login ${model.provider}' to re-authenticate.`,
-			);
-		}
-		throw new Error(formatNoApiKeyFoundMessage(model.provider));
 	}
 
 	private async _getSummarizationRequestAuth(model: Model<any>): Promise<{
@@ -456,10 +464,6 @@ export class AgentSession {
 		headers?: Record<string, string>;
 		env?: Record<string, string>;
 	}> {
-		if (this.agent.streamFunction === streamSimple) {
-			return this._getRequiredRequestAuth(model);
-		}
-
 		try {
 			const result = await this._modelRuntime.getAuth(model);
 			if (!result) return { model };
@@ -522,7 +526,7 @@ export class AgentSession {
 
 			const content = hookResult?.content ?? result.content ?? [];
 			// Runs after the extension hook so images injected or replaced by extensions are normalized too.
-			const normalizedContent = await normalizeToolResultImages(content, {
+			const normalizedContent = await this._hostCapabilities.toolResultImageNormalizer(content, {
 				autoResizeImages: this.settingsManager.getImageAutoResize(),
 			});
 
@@ -2766,9 +2770,6 @@ export class AgentSession {
 		flagValues?: Map<string, boolean | string>;
 		includeAllExtensionTools?: boolean;
 	}): void {
-		const autoResizeImages = this.settingsManager.getImageAutoResize();
-		const shellCommandPrefix = this.settingsManager.getShellCommandPrefix();
-		const shellPath = this.settingsManager.getShellPath();
 		const baseToolDefinitions = this._baseToolsOverride
 			? Object.fromEntries(
 					Object.entries(this._baseToolsOverride).map(([name, tool]) => [
@@ -2776,10 +2777,7 @@ export class AgentSession {
 						createToolDefinitionFromAgentTool(tool),
 					]),
 				)
-			: createAllToolDefinitions(this._cwd, {
-					read: { autoResizeImages },
-					bash: { commandPrefix: shellCommandPrefix, shellPath },
-				});
+			: this._hostCapabilities.getBaseToolDefinitions();
 
 		this._baseToolDefinitions = new Map(
 			Object.entries(baseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
@@ -2822,7 +2820,7 @@ export class AgentSession {
 		oldRunner.invalidate();
 		await this.settingsManager.reload();
 		this.syncQueueModesFromSettings();
-		resetApiProviders();
+		this._hostCapabilities.resetModelProviders?.();
 		await this._resourceLoader.reload();
 		this._buildRuntime({
 			activeToolNames: this.getActiveToolNames(),
@@ -2985,27 +2983,27 @@ export class AgentSession {
 		onChunk?: (chunk: string) => void,
 		options?: { excludeFromContext?: boolean; id?: string; operations?: BashOperations },
 	): Promise<BashResult> {
+		if (!this._hostCapabilities.bashExecutor) {
+			throw new Error("Bash execution capability is not available");
+		}
+
 		const abortController = new AbortController();
 		this._bashAbortControllers.add(abortController);
 
 		// Apply command prefix if configured (e.g., "shopt -s expand_aliases" for alias support)
 		const prefix = this.settingsManager.getShellCommandPrefix();
-		const shellPath = this.settingsManager.getShellPath();
 		const resolvedCommand = prefix ? `${prefix}\n${command}` : command;
 
 		try {
-			const result = await executeBashWithOperations(
-				resolvedCommand,
-				this.sessionManager.getCwd(),
-				options?.operations ?? createLocalBashOperations({ shellPath }),
-				{
-					onChunk: (delta) => {
-						onChunk?.(delta);
-						this._emit({ type: "bash_execution_update", id: options?.id, delta });
-					},
-					signal: abortController.signal,
+			const result = await this._hostCapabilities.bashExecutor(resolvedCommand, this.sessionManager.getCwd(), {
+				onChunk: (delta) => {
+					onChunk?.(delta);
+					this._emit({ type: "bash_execution_update", id: options?.id, delta });
 				},
-			);
+				signal: abortController.signal,
+				operations: options?.operations,
+				shellPath: this.settingsManager.getShellPath(),
+			});
 
 			this.recordBashResult(command, result, options);
 			return result;
@@ -3433,21 +3431,16 @@ export class AgentSession {
 	 * @returns Path to exported file
 	 */
 	async exportToHtml(outputPath?: string, options: { themeName?: string } = {}): Promise<string> {
-		const themeName = [options.themeName, this.settingsManager.getTheme()].find(
-			(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
-		);
+		if (!this._hostCapabilities.sessionExporter) {
+			throw new Error("Session export capability is not available");
+		}
 
-		// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
-		const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({
-			getToolDefinition: (name) => this.getToolDefinition(name),
-			theme,
-			cwd: this.sessionManager.getCwd(),
-		});
-
-		return await exportSessionToHtml(this.sessionManager, this.state, {
+		return await this._hostCapabilities.sessionExporter.exportToHtml(this.sessionManager, this.state, {
 			outputPath,
-			themeName,
-			toolRenderer,
+			themeName: options.themeName,
+			settingsThemeName: this.settingsManager.getTheme(),
+			getToolDefinition: (name) => this.getToolDefinition(name),
+			cwd: this.sessionManager.getCwd(),
 		});
 	}
 
@@ -3458,7 +3451,11 @@ export class AgentSession {
 	 * @returns The resolved output file path.
 	 */
 	exportToJsonl(outputPath?: string): string {
-		return exportSessionToJsonl(this.sessionManager, outputPath);
+		if (!this._hostCapabilities.sessionExporter) {
+			throw new Error("Session export capability is not available");
+		}
+
+		return this._hostCapabilities.sessionExporter.exportToJsonl(this.sessionManager, outputPath);
 	}
 
 	// =========================================================================
